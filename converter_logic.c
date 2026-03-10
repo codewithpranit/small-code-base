@@ -30,67 +30,16 @@ static const char* script_name_from_code(byte_t code) {
 /* Unicode range string for a script code */
 static const char* script_unicode_range(byte_t code) {
     switch (code) {
-        case 0x42: return "U+0900 – U+097F";
-        case 0x43: return "U+0980 – U+09FF";
-        case 0x44: return "U+0A00 – U+0A7F";
-        case 0x45: return "U+0A80 – U+0AFF";
-        case 0x46: return "U+0B00 – U+0B7F";
-        case 0x47: return "U+0B80 – U+0BFF";
-        case 0x48: return "U+0C00 – U+0C7F";
-        case 0x49: return "U+0C80 – U+0CFF";
-        case 0x4A: return "U+0D00 – U+0D7F";
+        case 0x42: return "U+0900 \xe2\x80\x93 U+097F";
+        case 0x43: return "U+0980 \xe2\x80\x93 U+09FF";
+        case 0x44: return "U+0A00 \xe2\x80\x93 U+0A7F";
+        case 0x45: return "U+0A80 \xe2\x80\x93 U+0AFF";
+        case 0x46: return "U+0B00 \xe2\x80\x93 U+0B7F";
+        case 0x47: return "U+0B80 \xe2\x80\x93 U+0BFF";
+        case 0x48: return "U+0C00 \xe2\x80\x93 U+0C7F";
+        case 0x49: return "U+0C80 \xe2\x80\x93 U+0CFF";
+        case 0x4A: return "U+0D00 \xe2\x80\x93 U+0D7F";
         default:   return "Unknown";
-    }
-}
-
-/* -------------------------------------------------------------------
- *  PART 1: ISCII BYTES -> DIRECT VERIFICATION
- *  Decodes the ISCII stream by grouping bytes into syllables and
- *  printing the raw ISCII bytes with hex representation.
- * ------------------------------------------------------------------- */
-void process_and_reverse_map(byte_t* iscii_stream, int size) {
-    printf("\n\n[5] ISCII DECODING\n");
-    printf("------------------------------------------------------------\n");
-    printf("ISCII Byte → Character\n\n");
-
-    int i = 0;
-    int syllable_idx = 1;
-
-    while (i < size) {
-        /* Handle Script Switching in the stream */
-        if (iscii_stream[i] == SCRIPT_SWITCH) {
-            byte_t lang_code = iscii_stream[i + 1];
-            printf("[Script Switch: %s (0x%02X)]\n",
-                   script_name_from_code(lang_code), lang_code);
-            i += 2;
-            continue;
-        }
-
-        printf("Syllable %d Bytes: ", syllable_idx++);
-
-        int cluster_active = 1;
-        while (i < size && cluster_active) {
-            byte_t current_byte = iscii_stream[i];
-
-            printf("[0x%02X] ", current_byte);
-
-            if (current_byte < 128 ||
-                (current_byte >= 0xA4 && current_byte <= 0xB2) ||
-                (current_byte >= 0xDA && current_byte <= 0xE7)) {
-                cluster_active = 0;
-            }
-            else if (current_byte >= 0xB3 && current_byte <= 0xD8) {
-                if (i + 1 < size) {
-                    byte_t next = iscii_stream[i + 1];
-                    if (next != HALANT_BYTE && next != NUKHTA_BYTE)
-                        cluster_active = 0;
-                } else {
-                    cluster_active = 0;
-                }
-            }
-            i++;
-        }
-        printf("\n");
     }
 }
 
@@ -223,12 +172,38 @@ static int detect_script_switches(const char* text,
 }
 
 /* -------------------------------------------------------------------
+ *  Print raw UTF-8 bytes of the file, one codepoint per line
+ *  e.g. "E0 A4 95\n"
+ * ------------------------------------------------------------------- */
+static void print_raw_utf8_bytes(const char* text) {
+    printf("\nREADING THE TESTBENCH FILE[UTF-8 BYTES]\n");
+    printf("------------------------------------------------------------\n");
+
+    const unsigned char* t = (const unsigned char*)text;
+    for (int i = 0; t[i] != '\0'; ) {
+        int len = 0;
+        if      (t[i] < 0x80)                { len = 1; }
+        else if ((t[i] & 0xE0) == 0xC0)      { len = 2; }
+        else if ((t[i] & 0xF0) == 0xE0)      { len = 3; }
+        else if ((t[i] & 0xF8) == 0xF0)      { len = 4; }
+        else { i++; continue; }
+
+        for (int j = 0; j < len; j++) {
+            if (j > 0) printf(" ");
+            printf("%02X", t[i + j]);
+        }
+        printf("\n");
+        i += len;
+    }
+}
+
+/* -------------------------------------------------------------------
  *  Print UTF-8 decoding trace for first few characters
  * ------------------------------------------------------------------- */
 static void print_utf8_trace(const char* text, int max_chars) {
     printf("\n\n[3] UTF-8 DECODING TRACE\n");
     printf("------------------------------------------------------------\n");
-    printf("UTF-8 Bytes → Unicode Codepoints\n\n");
+    printf("UTF-8 Bytes \xe2\x86\x92 Unicode Codepoints\n\n");
 
     const unsigned char* t = (const unsigned char*)text;
     int count = 0;
@@ -245,7 +220,7 @@ static void print_utf8_trace(const char* text, int max_chars) {
             if (j > 0) printf(" ");
             printf("0x%02X", t[i + j]);
         }
-        printf("] → U+%04X → ", cp);
+        printf("] \xe2\x86\x92 U+%04X \xe2\x86\x92 ", cp);
 
         /* Print the actual character as UTF-8 */
         for (int j = 0; j < len; j++)
@@ -260,16 +235,17 @@ static void print_utf8_trace(const char* text, int max_chars) {
 }
 
 /* -------------------------------------------------------------------
- *  Print ISCII encoding trace
+ *  Print ISCII encoding trace — bracket style [B3] [E8] ...
  * ------------------------------------------------------------------- */
 static void print_iscii_encoding_trace(byte_t *stream, int len) {
     printf("\n\n[4] ISCII ENCODING\n");
     printf("------------------------------------------------------------\n");
     printf("ISCII Byte Stream\n");
+
     for (int i = 0; i < len; i++) {
         printf("[%02X] ", stream[i]);
-        if ((i + 1) % 16 == 0) printf("\n");
     }
+
     printf("\n\nOutput Size : %d bytes\n", len);
 }
 
@@ -326,10 +302,13 @@ void run_file_test_bench(const char* filename) {
     printf("Detected Script Block : %s\n", script_name_from_code(first_script));
     printf("Unicode Range         : %s\n", script_unicode_range(first_script));
     if (has_switch)
-        printf("Script Switch         : Detected (→ %s)\n",
+        printf("Script Switch         : Detected (\xe2\x86\x92 %s)\n",
                script_name_from_code(second_script));
     else
         printf("Script Switch         : None detected\n");
+
+    /* READING THE TESTBENCH FILE [UTF-8 BYTES] */
+    print_raw_utf8_bytes(buffer);
 
     /* [3] UTF-8 DECODING TRACE */
     print_utf8_trace(buffer, 20);
@@ -338,11 +317,8 @@ void run_file_test_bench(const char* filename) {
     int iscii_len = convert_to_iscii(buffer, temp_iscii);
     print_iscii_encoding_trace(temp_iscii, iscii_len);
 
-    /* [5] ISCII DECODING (reverse verification) */
-    process_and_reverse_map(temp_iscii, iscii_len);
-
-    /* [6-11] ACHARYA PIPELINE */
-    run_acharya_pipeline(temp_iscii, iscii_len, buffer);
+    /* [7-...] ACHARYA PIPELINE (includes sections 7, 8, verification, summary) */
+    run_acharya_pipeline(temp_iscii, iscii_len, buffer, length);
 
     free(buffer);
     free(temp_iscii);
